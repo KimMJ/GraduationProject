@@ -1,4 +1,0 @@
-/home/mj/raspberryPi/epoll/epoll_thread/build/CMakeFiles/rebuild_cache.dir
-/home/mj/raspberryPi/epoll/epoll_thread/build/CMakeFiles/net_utils.dir
-/home/mj/raspberryPi/epoll/epoll_thread/build/CMakeFiles/edit_cache.dir
-/home/mj/raspberryPi/epoll/epoll_thread/build/CMakeFiles/epoll.dir
