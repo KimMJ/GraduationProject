@@ -1,0 +1,8 @@
+*~
+*.o
+*.so
+*/build/
+server
+client
+yolov3.weights
+
