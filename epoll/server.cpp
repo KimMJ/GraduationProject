@@ -8,11 +8,14 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <queue>
+#include <sys/stat.h>
+#include <mutex>
 #include "data.hpp"
 
 #define MAX_CLIENT 1000
 #define MAX_EVENTS 1000
 #define BUFSIZE 1024
+#define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 class client {
 public:
@@ -34,6 +37,11 @@ struct client g_clients[MAX_CLIENT];
 int g_epoll_fd, g_server_socket;
 bool server_close = true;
 
+std::queue<int> clients_request_queue;
+int fd_to_client;
+int fd_from_darknet;
+
+std::mutex mtx;    
 
 int main(int argc, char **argv){
   if (argc != 2){
@@ -52,17 +60,58 @@ int main(int argc, char **argv){
   server_init(atoi(argv[1]));
   epoll_init();
 
-  pthread_t process_thread,notice_thread;
+  if (-1 == (fd_to_client=open("server_send", O_WRONLY))) {
+    perror("server_send open error: ");
+    return 1;
+  }
+  
+  if (-1 == (fd_from_darknet=open("darknet_send", O_RDWR))) {
+    perror("darknet_send open error: ");
+    return 2;
+  } 
+
+
+
+  pthread_t process_thread,notice_thread, darknet_request_thread;
   void *thread_result;
 
   pthread_create(&process_thread, NULL, server_process, NULL);
   pthread_create(&notice_thread, NULL, server_send_data, NULL);
+  pthread_create(&darknet_request_thread, NULL, server_request_darknet, NULL);
 
   pthread_join(process_thread, &thread_result);
   pthread_join(notice_thread, &thread_result);
+  pthread_join(darknet_request_thread, &thread_result);
 
   close(g_server_socket);
   return 0;
+}
+
+void *server_request_darknet(void *arg) {
+  int clinetd_fd;
+  char message[BUFSIZE];
+  char buf[BUFSIZE];
+  while (server_close == false) {
+    if (!clients_request_queue.empty()) {
+      mtx.lock();
+      int client_fd = clients_request_queue.front();
+      clients_request_queue.pop();
+      mtx.unlock();
+      sprintf(message, "../%d%s", clinetd_fd, ".jpg");
+
+      if (write(fd_to_client, message, sizeof(message)) < 0) {
+        perror("write error: ");
+        return 3;
+      }
+
+      if (read(fd_from_darknet, buf, BUFSIZE) < 0) {
+        perror("read error: ");
+        return 4;
+      }
+
+      printf("receive from darknet: images/%d.jpg result: %s\n", buf);
+    }
+  }
 }
 
 
@@ -241,7 +290,7 @@ void client_receive(int event_fd){
   printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
-  sprintf(fileName, "%d%s", event_fd, ".jpg");
+  sprintf(fileName, "images/%d%s", event_fd, ".jpg");
 
   printf("trying to %s file open.\n", fileName);    
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
@@ -258,6 +307,8 @@ void client_receive(int event_fd){
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
   }
   
-
   printf("done!\n");
+  mtx.lock();
+  clients_request_queue.push(event_fd);
+  mtx.unlock();
 }
