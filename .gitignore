@@ -2,7 +2,10 @@
 *.o
 *.so
 *.a
+*.swp
 */build/
+/images/*
+/fifo_pipe/*
 server
 client
 darknet
