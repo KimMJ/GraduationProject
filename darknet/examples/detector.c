@@ -587,13 +587,15 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     }
 
     while(1){
+      int len = 0;
         if(filename){
             strncpy(input, filename, 256);
         } else {
             printf("Enter Image Path: ");
             fflush(stdout);
 
-            if (read(fd_from_server, input, 256) < 0) {
+            memset(input, 0, 256);
+            if ((len = read(fd_from_server, input, 256)) < 0) {
                 perror("write error: ");
                 return;
             }
@@ -604,8 +606,9 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
 
             // input = fgets(input, 256, stdin);
             // if(!input) return;
-            // strtok(input, "\n");
+            //strtok(input, "\n");
         }
+        printf("paht : %s, len : %d\n", input, len);
         image im = load_image_color(input,0,0);
         image sized = letterbox_image(im, net->w, net->h);
         //image sized = resize_image(im, net->w, net->h);

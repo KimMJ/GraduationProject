@@ -111,10 +111,11 @@ void *server_request_darknet(void *arg) {
       int client_fd = clients_request_queue.front();
       clients_request_queue.pop();
       mtx.unlock();
-      sprintf(message, "../images/%d%s", client_fd, ".jpg");
-      printf("message : %s\n", message);
+      memset(message, 0, BUFSIZE);
+      sprintf(message, "../images/%05d%s", client_fd, ".jpg");
+      printf("message : %s, sizeof message : %lu\n", message, strlen(message));
 
-      if (write(fd_to_client, message, sizeof(message)) < 0) {
+      if (write(fd_to_client, message, strlen(message)) < 0) {
         perror("write error: ");
         return (void*) 3;
       }
@@ -124,7 +125,7 @@ void *server_request_darknet(void *arg) {
         return (void*) 4;
       }
 
-      printf("receive from darknet: ../images/%d.jpg result: %s\n", client_fd, buf);
+      printf("receive from darknet: ../images/%05d.jpg result: %s\n", client_fd, buf);
     }
   }
 }
@@ -305,7 +306,7 @@ void client_receive(int event_fd){
   printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
-  sprintf(fileName, "../images/%d%s", event_fd, ".jpg");
+  sprintf(fileName, "../images/%05d%s", event_fd, ".jpg");
 
   printf("trying to %s file open.\n", fileName);    
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
