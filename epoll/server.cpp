@@ -28,6 +28,7 @@ void userpool_delete(int client_fd);
 void client_receive(int event_fd);
 void epoll_init();
 void server_init(int port);
+void *server_request_darknet(void *arg);
 void *server_process(void *arg);
 void *server_send_data(void *arg);
 bool setnonblocking(int fd, bool blocking);
@@ -62,15 +63,17 @@ int main(int argc, char **argv){
 
   /* At first, run this script!  */
 
-  // if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
-  //   perror("mkfifo error: ");
-  //   return 1;
-  // }
+  /*
+  if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
+    perror("mkfifo error: ");
+    return 1;
+  }
   
-  // if (-1 == (mkfifo("../fifo_pipe/darknet_send", FIFO_PERMS))) {
-  //   perror("mkfifo error: ");
-  //   return 1;
-  // } 
+  if (-1 == (mkfifo("../fifo_pipe/darknet_send", FIFO_PERMS))) {
+    perror("mkfifo error: ");
+    return 1;
+  } 
+  */
 
   if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
     perror("server_send open error: ");
@@ -110,18 +113,19 @@ void *server_request_darknet(void *arg) {
       clients_request_queue.pop();
       mtx.unlock();
       sprintf(message, "../images/%d%s", clinetd_fd, ".jpg");
+      printf("message\n");
 
       if (write(fd_to_client, message, sizeof(message)) < 0) {
         perror("write error: ");
-        return 3;
+        return (void*) 3;
       }
 
       if (read(fd_from_darknet, buf, BUFSIZE) < 0) {
         perror("read error: ");
-        return 4;
+        return (void*) 4;
       }
 
-      printf("receive from darknet: ../images/%d.jpg result: %s\n", buf);
+      printf("receive from darknet: ../images/%d.jpg result: %s\n", client_fd, buf);
     }
   }
 }

@@ -5,4 +5,5 @@
 server
 client
 yolov3.weights
-
+server_send
+darknet_send
