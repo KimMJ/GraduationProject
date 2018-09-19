@@ -1,9 +1,39 @@
-#include "server.hpp"
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/epoll.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/socket.h>
+#include <pthread.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <queue>
+#include "data.hpp"
+
+#define MAX_CLIENT 1000
+#define MAX_EVENTS 1000
+#define BUFSIZE 1024
+
+class client {
+public:
+  int client_socket_fd;
+  char client_ip[20];
+};
+
+void userpool_add(int client_fd, char * client_ip);
+void userpool_delete(int client_fd);
+void client_receive(int event_fd);
+void epoll_init();
+void server_init(int port);
+void *server_process(void *arg);
+void *server_send_data(void *arg);
+bool setnonblocking(int fd, bool blocking);
 
 struct epoll_event g_events[MAX_EVENTS];
 struct client g_clients[MAX_CLIENT];
 int g_epoll_fd, g_server_socket;
 bool server_close = true;
+
 
 int main(int argc, char **argv){
   if (argc != 2){
@@ -66,18 +96,19 @@ void *server_process(void *arg){
   }
 }
 
-//send data to clients
+// send some data to clients
+// 
 void *server_send_data(void *arg){
   char buf[BUFSIZE];
   int len;
+  int new_expire = 100;
   while(true){
+    //if ready
     fgets(buf, BUFSIZE, stdin);
-    sprintf(buf, "%s", buf);
-
-    if (strcmp(buf, "exit\n") == 0){
-      server_close = true;
-      return (void*) NULL;
-    }
+    
+    
+    memset(buf, 0, BUFSIZE);
+    sprintf(buf, "%d", new_expire);
 
     for (int i = 0; i < MAX_CLIENT; i ++){
       if (g_clients[i].client_socket_fd != -1){
@@ -87,7 +118,6 @@ void *server_send_data(void *arg){
   }
 }
 
-//??
 bool setnonblocking(int fd, bool blocking=true){
   if (fd < 0) return false;
        
@@ -130,7 +160,7 @@ void server_init(int port){
     exit(1);
   }
 
-  //setnonblocking(g_server_socket);
+  //setnonblocking(g_server_socket, false);
   printf("server start listening\n");
   server_close = false;
 }
@@ -164,7 +194,7 @@ void userpool_add(int client_fd, char * client_ip){
   }
   if (i >= MAX_CLIENT) {
     printf("client is full\n");
-    close(client_fd);
+   close(client_fd);
   }
 
   g_clients[i].client_socket_fd = client_fd;
@@ -192,37 +222,42 @@ void userpool_delete(int client_fd){
   }
 }
 
+// receive from client
 void client_receive(int event_fd){
   char buf[BUFSIZE];
   int len;
-  len = recv(event_fd, buf, BUFSIZE, 0);
+  
+  memset(buf, 0, BUFSIZE);
+  len = recv(event_fd, buf, 10, 0);
+
   if (len <= 0){
     userpool_delete(event_fd);
     close(event_fd);
     return;
   }
 
-  for (int i = 0; i < MAX_CLIENT; i ++){
-    /*
+  
+  int total_size = atoi(buf);
+  printf("file size : %d, len : %d\n", total_size, len);
+
+  char fileName[BUFSIZE];
+  sprintf(fileName, "%d%s", event_fd, ".jpg");
+
+  printf("trying to %s file open.\n", fileName);    
+  int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
     
-    if (g_clients[i].client_socket_fd != -1){
-      len = send(g_clients[i].client_socket_fd, buf, len, 0);
-    }
-    */
-    
-    int fd = open("receive.jpg", O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    
-    if (fd == -1){
-      //error_handling("File open error");
-      printf(";;;;\n");
-      exit(1);
-    }
-      printf("receiving\n");
-      write(fd, buf, len);
-    while ((len = recv(event_fd, buf, len, 0)) != 0) {
-      printf("receiving\n");
-      write(fd, buf, len);
-    }
-    
+  if (fd == -1){
+    printf("file open error\n");
+    exit(1);
   }
+  int size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
+  while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
+    printf("receiving : %d remain : %d\n", len, total_size);
+    write(fd, buf, len);
+    total_size -= len;
+    size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
+  }
+  
+
+  printf("done!\n");
 }

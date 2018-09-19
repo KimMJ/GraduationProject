@@ -1,1 +1,0 @@
-/usr/bin/c++  -pthread -std=c++0x -march=native -O2 -g -Wall      -rdynamic CMakeFiles/epoll.dir/epoll.cpp.o  -o epoll -Wl,-rpath,/home/mj/raspberryPi/epoll/epoll_thread/build libnet_utils.so 
