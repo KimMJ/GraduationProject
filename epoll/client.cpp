@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <ctime>
 #include "data.hpp"
 
 #define BUFSIZE 1024
@@ -204,6 +205,9 @@ void *client_process(void *arg) {
   char buf[BUFSIZE];
   int len = -1;
   int fd = -1;
+  int mov_msec = 0;
+  clock_t light_start_time = clock();
+  clock_t frame_start_time = clock();
 
   //OPENCV
   int currentFrame = 0;
@@ -213,11 +217,25 @@ void *client_process(void *arg) {
     cerr << "fail to open the video" << endl;
     return (void*) EXIT_FAILURE;
   }
-
-  while (socket_connected == true) {
-    double fps = vc.get(CV_CAP_PROP_FPS);
-
     cout << "total video frame : " << vc.get(CV_CAP_PROP_FRAME_COUNT) << endl;
+
+  frame_start_time = clock();
+  double fps = vc.get(CV_CAP_PROP_FPS);
+  clock_t frame_snapshot_time;
+  clock_t frame_time;
+  
+  while (socket_connected == true) {
+    frame_snapshot_time = clock();
+    frame_time = frame_snapshot_time - frame_start_time;
+    
+    if (frame_time< 1000) {//10sec
+      continue;
+    }
+
+    frame_start_time = frame_snapshot_time;
+    // modify here to move specific time (msec)
+    mov_msec += frame_time;
+    vc.set(CAP_PROP_POS_MSEC, mov_msec);
 
     Mat frame;
     vc >> frame;
@@ -241,20 +259,20 @@ void *client_process(void *arg) {
       exit(1);
     }
 
-    memset(data, 0, BUFSIZE);
-    sprintf(data, "%010lu", file_len);
-    printf("%s file size : %s\n", OUTPUT_FILENAME, data);
-    send(sock, data, strlen(data), 0);
+    memset(buf, 0, BUFSIZE);
+    sprintf(buf, "%010lu", file_len);
+    printf("%s file size : %s\n", OUTPUT_FILENAME, buf);
+    send(sock, buf, strlen(buf), 0);
 
-    while ((len = read(fd, data, BUFSIZE)) != 0) {
-      send(sock, data, len, 0);
+    while ((len = read(fd, buf, BUFSIZE)) != 0) {
+      send(sock, buf, len, 0);
     }
 
     printf("file transfer is done\n");
 
-    memset(data, 0, BUFSIZE);
+    memset(buf, 0, BUFSIZE);
 
-    len = recv(sock, data, BUFSIZE, MSG_DONTWAIT);//non_blocking
+    len = recv(sock, buf, BUFSIZE, MSG_DONTWAIT);//non_blocking
 
     if (len == 0) {
       //socket is closed.
@@ -264,25 +282,31 @@ void *client_process(void *arg) {
     }
     // if some data received
     else if (len > 0) {
-      printf("new expire : %d\n", atoi(data));
-      expire = atoi(data);
+      printf("new expire : %d\n", atoi(buf));
+      expire = atoi(buf);
     }
     //error
     else {
       // case 1 : no data
-      if (expire > cur_timer) {
+      // time check
+      
+      /*
+      if (clock() - start_time >= expire) {
         sleep(1);
         cur_timer ++;
       }
-      else {
+      */
+
+      if (clock() - light_start_time < expire) {
         if (cur_light == RED) {
           printf("RED to GREEN\n");
         } else {
           cur_light = RED;
           printf("GREEN to RED\n");
         }
-        cur_timer = 0;
+        //cur_timer = 0;
         expire = DEFAULT_EXPIRE;
+        light_start_time = clock();
       }
     }
   }
