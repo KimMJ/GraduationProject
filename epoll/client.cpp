@@ -222,20 +222,22 @@ void *client_process(void *arg) {
   frame_start_time = clock();
   double fps = vc.get(CV_CAP_PROP_FPS);
   clock_t frame_snapshot_time;
-  clock_t frame_time;
+  double frame_time;
   
   while (socket_connected == true) {
     frame_snapshot_time = clock();
-    frame_time = frame_snapshot_time - frame_start_time;
+    frame_time = (float)(frame_snapshot_time - frame_start_time)/CLOCKS_PER_SEC;
     
-    if (frame_time< 1000) {//10sec
+    if (frame_time < 5) {//10sec
+      //printf("frame_time : %f\n", frame_time);
       continue;
     }
+    //1000msec == 1sec
 
     frame_start_time = frame_snapshot_time;
     // modify here to move specific time (msec)
     mov_msec += frame_time;
-    vc.set(CAP_PROP_POS_MSEC, mov_msec);
+    vc.set(CAP_PROP_POS_MSEC, mov_msec * 1000);
 
     Mat frame;
     vc >> frame;
@@ -246,7 +248,9 @@ void *client_process(void *arg) {
     }
     
     imshow("image", frame);
+    //waitKey(1);
     imwrite(OUTPUT_FILENAME, frame);
+
 
     FILE * f = fopen(OUTPUT_FILENAME, "r");
     fseek(f, 0, SEEK_END);
