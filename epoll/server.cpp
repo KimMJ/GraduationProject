@@ -60,12 +60,24 @@ int main(int argc, char **argv){
   server_init(atoi(argv[1]));
   epoll_init();
 
-  if (-1 == (fd_to_client=open("server_send", O_WRONLY))) {
+  /* At first, run this script!  */
+
+  // if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
+  //   perror("mkfifo error: ");
+  //   return 1;
+  // }
+  
+  // if (-1 == (mkfifo("../fifo_pipe/darknet_send", FIFO_PERMS))) {
+  //   perror("mkfifo error: ");
+  //   return 1;
+  // } 
+
+  if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
     perror("server_send open error: ");
     return 1;
   }
   
-  if (-1 == (fd_from_darknet=open("darknet_send", O_RDWR))) {
+  if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
   } 
@@ -97,7 +109,7 @@ void *server_request_darknet(void *arg) {
       int client_fd = clients_request_queue.front();
       clients_request_queue.pop();
       mtx.unlock();
-      sprintf(message, "../%d%s", clinetd_fd, ".jpg");
+      sprintf(message, "../images/%d%s", clinetd_fd, ".jpg");
 
       if (write(fd_to_client, message, sizeof(message)) < 0) {
         perror("write error: ");
@@ -109,7 +121,7 @@ void *server_request_darknet(void *arg) {
         return 4;
       }
 
-      printf("receive from darknet: images/%d.jpg result: %s\n", buf);
+      printf("receive from darknet: ../images/%d.jpg result: %s\n", buf);
     }
   }
 }
@@ -290,7 +302,7 @@ void client_receive(int event_fd){
   printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
-  sprintf(fileName, "images/%d%s", event_fd, ".jpg");
+  sprintf(fileName, "../images/%d%s", event_fd, ".jpg");
 
   printf("trying to %s file open.\n", fileName);    
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);

@@ -581,7 +581,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     int fd_from_server;
     char message[] = "client to server\n";
 
-    if (-1 == (fd_from_server=open("server_send", O_RDWR))) {
+    if (-1 == (fd_from_server=open("../fifo_pipe/server_send", O_RDWR))) {
         perror("open error: ");
         return;
     }

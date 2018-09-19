@@ -247,7 +247,7 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
     int total_cars = 1;
     char message[256];
 
-    if (-1 == (fd_to_server=open("darknet_send", O_WRONLY))) {
+    if (-1 == (fd_to_server=open("../fifo_pipe/darknet_send", O_WRONLY))) {
         perror("open error: ");
         return;
     }
