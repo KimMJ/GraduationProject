@@ -19,7 +19,7 @@
 
 void *send_data(void *arg);
 void *recv_data(void *arg);
-void *alarm_timer(void *arg);
+//void *alarm_timer(void *arg);
 using namespace std;
 using namespace cv;
 
@@ -62,33 +62,16 @@ int main(int argc, char **argv){
 
   pthread_create(&snd_thread, NULL, send_data, (void *) &sock);
   pthread_create(&rcv_thread, NULL, recv_data, (void *) &sock);
-  pthread_create(&alarm_thread, NULL, alarm_timer, (void *) &sock);
+  //pthread_create(&alarm_thread, NULL, alarm_timer, (void *) &sock);
 
   pthread_join(snd_thread, &thread_result);
   pthread_join(rcv_thread, &thread_result);
-  pthread_join(alarm_thread, &thread_result);
+  //pthread_join(alarm_thread, &thread_result);
   
   close(sock);
   return 0;
 }
 
-void *alarm_timer(void *arg) {
-  while (true) {
-    while (expire > cur_timer){
-      sleep(1);
-      cur_timer ++;
-    }
-    if (cur_light == RED) {
-      cur_light = GREEN;
-      printf("RED to GREEN\n");
-    } else {
-      cur_light = RED;
-      printf("GREEN to RED\n");
-    }
-    cur_timer = 0;
-    expire = DEFAULT_EXPIRE;
-  }
-}
 
 void *send_data(void *arg){
   int sock = *(int *) arg;
@@ -166,7 +149,7 @@ void *send_data(void *arg){
       int len = 0;
       while ((len=read(fd, data, BUFSIZE)) != 0) {
         //puts(data);
-        printf("transferring len : %d\n", len);
+        //printf("transferring len : %d\n", len);
         send(sock, data, len, 0);    
       }
       printf("done!\n");
@@ -183,17 +166,18 @@ void *send_data(void *arg){
 void *recv_data(void *arg){
   int sock = *(int *) arg;
   char data[BUFSIZE];
-  int str_len;
+  int len = 0;
+  /*
   while (true){
     memset(data, 0, BUFSIZE);
 
-    str_len = recv(sock, data, BUFSIZE, 0);
+    len = recv(sock, data, BUFSIZE, 0);
     
-    if (str_len == -1){
+    if (len == -1){
       return (void *) 1;
     }
     
-    if (str_len == 0){
+    if (len == 0){
       printf("socket closed\n");
       socket_connected = false;
       return (void *) 1;
@@ -201,4 +185,60 @@ void *recv_data(void *arg){
     printf("new expire : %d\n", atoi(data));
     expire = atoi(data);
   }
+  */
+  while (true) {
+    memset(data, 0, BUFSIZE);
+
+    len = recv(sock, data, BUFSIZE, MSG_DONTWAIT);
+
+    if (len == 0) {
+      //closed
+      printf("socket closed\n");
+      socket_connected = false;
+      return (void *) 1;
+    }
+    // if some data received
+    else if (len > 0) {
+      printf("new expire : %d\n", atoi(data));
+      expire = atoi(data);
+    }
+    //error
+    else {
+      //case 1 : no data
+      if (expire > cur_timer) {
+        sleep(1);
+        cur_timer ++; // TODO : change to use time()
+      } else {
+        if (cur_light == RED) {
+          cur_light = GREEN;
+          printf("RED to GREEN\n");
+        } else {
+          cur_light = RED;
+          printf("GREEN to RED\n");
+        }
+        cur_timer = 0;
+        expire = DEFAULT_EXPIRE;
+      }
+    }
+  }
 }
+
+/*
+void *alarm_timer(void *arg) {
+  while (true) {
+    while (expire > cur_timer){
+      sleep(1);
+      cur_timer ++;
+    }
+    if (cur_light == RED) {
+      cur_light = GREEN;
+      printf("RED to GREEN\n");
+    } else {
+      cur_light = RED;
+      printf("GREEN to RED\n");
+    }
+    cur_timer = 0;
+    expire = DEFAULT_EXPIRE;
+  }
+}
+*/
