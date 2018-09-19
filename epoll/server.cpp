@@ -103,7 +103,6 @@ int main(int argc, char **argv){
 }
 
 void *server_request_darknet(void *arg) {
-  int clinetd_fd;
   char message[BUFSIZE];
   char buf[BUFSIZE];
   while (server_close == false) {
@@ -112,8 +111,8 @@ void *server_request_darknet(void *arg) {
       int client_fd = clients_request_queue.front();
       clients_request_queue.pop();
       mtx.unlock();
-      sprintf(message, "../images/%d%s", clinetd_fd, ".jpg");
-      printf("message\n");
+      sprintf(message, "../images/%d%s", client_fd, ".jpg");
+      printf("message : %s\n", message);
 
       if (write(fd_to_client, message, sizeof(message)) < 0) {
         perror("write error: ");
@@ -317,7 +316,7 @@ void client_receive(int event_fd){
   }
   int size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
-    printf("receiving : %d remain : %d\n", len, total_size);
+    //printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
@@ -326,5 +325,6 @@ void client_receive(int event_fd){
   printf("done!\n");
   mtx.lock();
   clients_request_queue.push(event_fd);
+  printf("event_fd : %d\n", event_fd);
   mtx.unlock();
 }

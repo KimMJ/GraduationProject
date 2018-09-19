@@ -1,9 +1,11 @@
 *~
 *.o
 *.so
+*.a
 */build/
 server
 client
+darknet
 yolov3.weights
 server_send
 darknet_send
