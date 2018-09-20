@@ -36,7 +36,7 @@ void *server_request_darknet(void *arg);
 void *server_process(void *arg);
 void *server_send_data(void *arg);
 bool setnonblocking(int fd, bool blocking);
-void darknet_init();
+void response_darknet_init();
 
 struct epoll_event g_events[MAX_EVENTS];
 struct client g_clients[MAX_CLIENT];
@@ -46,7 +46,7 @@ bool server_close = true;
 //int default_expire = DEFAULT_EXPIRE;
 int client_expire = DEFAULT_EXPIRE;
 // 일단 1초 가정
-int response_darknet = 1;
+double response_darknet = 0.0;
 
 std::queue<int> clients_request_queue;
 int fd_to_client;
@@ -96,7 +96,9 @@ int main(int argc, char **argv){
   if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
-  } 
+  }
+  
+  response_darknet_init();
 
 
 
@@ -220,7 +222,7 @@ void *server_send_data(void *arg){
     for (int i = 0; i < MAX_CLIENT; i ++){
       if (g_clients[i].client_socket_fd != -1){
         printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
-//        len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
+        len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
         g_clients[i].num_car = -1;
       }
     }
@@ -374,6 +376,21 @@ void client_receive(int event_fd){
   mtx.unlock();
 }
 
-void darknet_init() {
+void response_darknet_init() {
+  char message[] = "../images/sample.demo";
+  char buf[BUFSIZE];
+  std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
+  if (write(fd_to_client, message, strlen(message)) < 0) {
+    perror("write error: ");
+    exit(1);
+  }
   
+  
+  if (read(fd_from_darknet, buf, BUFSIZE) < 0) {
+    perror("read error: ");
+    exit(1);
+  }
+  std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
+  response_darknet = sec.count();
+  printf("%f\n", response_darknet);
 }
