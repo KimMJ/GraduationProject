@@ -10,17 +10,21 @@
 #include <queue>
 #include <sys/stat.h>
 #include <mutex>
+#include <map>
 #include "data.hpp"
 
 #define MAX_CLIENT 1000
 #define MAX_EVENTS 1000
 #define BUFSIZE 1024
+#define DEFAULT_EXPIRE 90
+#define MAX_EXPIRE 180
 #define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 class client {
 public:
   int client_socket_fd;
   char client_ip[20];
+  int num_car;
 };
 
 void userpool_add(int client_fd, char * client_ip);
@@ -32,11 +36,17 @@ void *server_request_darknet(void *arg);
 void *server_process(void *arg);
 void *server_send_data(void *arg);
 bool setnonblocking(int fd, bool blocking);
+void darknet_init();
 
 struct epoll_event g_events[MAX_EVENTS];
 struct client g_clients[MAX_CLIENT];
 int g_epoll_fd, g_server_socket;
 bool server_close = true;
+
+//int default_expire = DEFAULT_EXPIRE;
+int client_expire = DEFAULT_EXPIRE;
+// 일단 1초 가정
+int response_darknet = 1;
 
 std::queue<int> clients_request_queue;
 int fd_to_client;
@@ -56,6 +66,7 @@ int main(int argc, char **argv){
   //init g_clients
   for (int i = 0; i < MAX_CLIENT; i ++){
     g_clients[i].client_socket_fd = -1;
+    g_clients[i].num_car = -1;
   }
 
   server_init(atoi(argv[1]));
@@ -63,7 +74,7 @@ int main(int argc, char **argv){
 
   /* At first, run this script!  */
 
-  /*
+  
   if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
@@ -73,7 +84,7 @@ int main(int argc, char **argv){
     perror("mkfifo error: ");
     return 1;
   } 
-  */
+  
 
   if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
     perror("server_send open error: ");
@@ -125,7 +136,13 @@ void *server_request_darknet(void *arg) {
         return (void*) 4;
       }
 
-      printf("receive from darknet: ../images/%05d.jpg result: %s\n", client_fd, buf);
+      for (int i=0; i<MAX_CLIENT; i++) {
+        if (g_clients[i].client_socket_fd == client_fd) {
+          g_clients[i].num_car = atoi(buf);
+          printf("receive from darknet: ../images/%05d.jpg result: %d\n", client_fd, g_clients[i].num_car);
+          break;
+        }
+      }
     }
   }
 }
@@ -166,18 +183,42 @@ void *server_process(void *arg){
 void *server_send_data(void *arg){
   char buf[BUFSIZE];
   int len;
-  int new_expire = 100;
   while(true){
-    //if ready
-    fgets(buf, BUFSIZE, stdin);
+    bool noClient = true;
+    int i;
+    for (i=0; i<MAX_CLIENT; i++) {
+      if (g_clients[i].client_socket_fd == -1) { // client_socket_fd 가 설정되어 있지 않을 경우 continue
+        continue;
+      }
+      
+      if (noClient) { // client_socket_fd 가 설정되어 있고 client 가 없다고 설정되어 있을 경우, client 있음
+        noClient = false;
+      }
+      
+      if (g_clients[i].num_car == -1) { // client_socket_fd 가 설정되어 있지만, num_car 가 설정되어있지 않을 경우, break
+        break;
+      }
+    }
     
+    if (noClient || i != MAX_CLIENT) { // client가 없거나 client 가 있지만 num_car 가 설정되어있지 않을 경우 continue
+      continue;
+    }
     
-    memset(buf, 0, BUFSIZE);
-    sprintf(buf, "%d", new_expire);
+    // all client.num_car set
+    
+    if (client_expire < MAX_EXPIRE) {
+      client_expire += 10;
+    } else {
+      client_expire = DEFAULT_EXPIRE;
+    }
+    
+    sprintf(buf, "%d", client_expire);
 
     for (int i = 0; i < MAX_CLIENT; i ++){
       if (g_clients[i].client_socket_fd != -1){
-        len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
+        printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
+//        len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
+        g_clients[i].num_car = -1;
       }
     }
   }
@@ -328,4 +369,8 @@ void client_receive(int event_fd){
   clients_request_queue.push(event_fd);
   printf("event_fd : %d\n", event_fd);
   mtx.unlock();
+}
+
+void darknet_init() {
+  
 }
