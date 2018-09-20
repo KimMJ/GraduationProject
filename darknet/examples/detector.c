@@ -608,7 +608,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
             // if(!input) return;
             //strtok(input, "\n");
         }
-        printf("paht : %s, len : %d\n", input, len);
+        printf("path : %s, len : %d\n", input, len);
         image im = load_image_color(input,0,0);
         image sized = letterbox_image(im, net->w, net->h);
         //image sized = resize_image(im, net->w, net->h);

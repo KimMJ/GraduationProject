@@ -206,9 +206,11 @@ void *client_process(void *arg) {
   int len = -1;
   int fd = -1;
   int mov_msec = 0;
-  clock_t light_start_time = clock();
-  clock_t frame_start_time = clock();
+  //clock_t light_start_time = clock();
+  //clock_t frame_start_time = clock();
 
+  time_t light_start_time = time(NULL);
+  time_t frame_start_time = time(NULL);
   //OPENCV
   int currentFrame = 0;
   VideoCapture vc = VideoCapture(INPUT);
@@ -217,18 +219,23 @@ void *client_process(void *arg) {
     cerr << "fail to open the video" << endl;
     return (void*) EXIT_FAILURE;
   }
-    cout << "total video frame : " << vc.get(CV_CAP_PROP_FRAME_COUNT) << endl;
+  cout << "total video frame : " << vc.get(CV_CAP_PROP_FRAME_COUNT) << endl;
 
-  frame_start_time = clock();
+  //frame_start_time = clock();
+  frame_start_time = time(NULL);
+  
   double fps = vc.get(CV_CAP_PROP_FPS);
-  clock_t frame_snapshot_time;
+  //clock_t frame_snapshot_time;
+  time_t frame_snapshot_time;
   double frame_time;
   
   while (socket_connected == true) {
     frame_snapshot_time = clock();
-    frame_time = (float)(frame_snapshot_time - frame_start_time)/CLOCKS_PER_SEC;
+    frame_snapshot_time = time(NULL);
+    //frame_time = (float)(frame_snapshot_time - frame_start_time)/CLOCKS_PER_SEC;
+    frame_time = frame_snapshot_time - frame_start_time;
     
-    if (frame_time < 5) {//10sec
+    if (frame_time < 10) {//10sec
       //printf("frame_time : %f\n", frame_time);
       continue;
     }
@@ -248,7 +255,7 @@ void *client_process(void *arg) {
     }
     
     imshow("image", frame);
-    //waitKey(1);
+    waitKey(1);
     imwrite(OUTPUT_FILENAME, frame);
 
 
@@ -301,7 +308,7 @@ void *client_process(void *arg) {
       }
       */
 
-      if (clock() - light_start_time < expire) {
+      if (time(NULL) - light_start_time < expire) {
         if (cur_light == RED) {
           printf("RED to GREEN\n");
         } else {
@@ -310,7 +317,8 @@ void *client_process(void *arg) {
         }
         //cur_timer = 0;
         expire = DEFAULT_EXPIRE;
-        light_start_time = clock();
+        //light_start_time = clock();
+        light_start_time = time(NULL);
       }
     }
   }
