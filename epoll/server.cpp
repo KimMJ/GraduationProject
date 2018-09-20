@@ -74,6 +74,8 @@ int main(int argc, char **argv){
 
   /* At first, run this script!  */
 
+  printf("if name pipe already exist, remove it.\n");
+  system("rm ../fifo_pipe/*");
   
   if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
     perror("mkfifo error: ");
@@ -162,6 +164,7 @@ void *server_process(void *arg){
       continue;
     }
 
+    printf("event!\n");
     for (int i = 0; i < num_fd; i ++){
       if (g_events[i].data.fd == g_server_socket){//first connect time
         client_socket = accept(g_server_socket, (struct sockaddr *) &client_address, (socklen_t *) &client_length);
