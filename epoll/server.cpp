@@ -63,7 +63,9 @@ int main(int argc, char **argv){
 
   /* At first, run this script!  */
 
-  /*
+  printf("if name pipe already exist, remove it.\n");
+  system("rm ../fifo_pipe/*");
+  
   if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
@@ -73,7 +75,7 @@ int main(int argc, char **argv){
     perror("mkfifo error: ");
     return 1;
   } 
-  */
+  
 
   if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
     perror("server_send open error: ");
@@ -126,6 +128,10 @@ void *server_request_darknet(void *arg) {
       }
 
       printf("receive from darknet: ../images/%05d.jpg result: %s\n", client_fd, buf);
+      if (write(client_fd, buf, strlen(buf)) < 0) {
+        perror("write error: ");
+        return (void *) 5;
+      }
     }
   }
 }
@@ -145,6 +151,7 @@ void *server_process(void *arg){
       continue;
     }
 
+    printf("event!\n");
     for (int i = 0; i < num_fd; i ++){
       if (g_events[i].data.fd == g_server_socket){//first connect time
         client_socket = accept(g_server_socket, (struct sockaddr *) &client_address, (socklen_t *) &client_length);
@@ -172,8 +179,8 @@ void *server_send_data(void *arg){
     fgets(buf, BUFSIZE, stdin);
     
     
-    memset(buf, 0, BUFSIZE);
-    sprintf(buf, "%d", new_expire);
+    //memset(buf, 0, BUFSIZE);
+    //sprintf(buf, "%d", new_expire);
 
     for (int i = 0; i < MAX_CLIENT; i ++){
       if (g_clients[i].client_socket_fd != -1){
