@@ -3,11 +3,11 @@ FROM ubuntu:16.04
 EXPOSE 22
 
 RUN apt-get update && apt-get upgrade -y
-RUN apt-get -y install git build-essential cmake pkg-config libjpeg-dev libtiff5-dev \
-      libjasper-dev libpng12-dev libavcodec-dev libavformat-dev libswscale-dev libxvidcore-dev \
-      libx264-dev libxine2-dev libv4l-dev v4l-utils libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
-      libqt4-dev mesa-utils libgl1-mesa-dri libqt4-opengl-dev libatlas-base-dev gfortran libeigen3-dev \
-      wget unzip 
+RUN apt-get -y install git build-essential cmake pkg-config libjpeg-dev libtiff5-dev 
+RUN apt-get -y install libjasper-dev libpng12-dev libavcodec-dev libavformat-dev libswscale-dev libxvidcore-dev 
+RUN apt-get -y install libx264-dev libxine2-dev libv4l-dev v4l-utils libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev 
+RUN apt-get  -y install libqt4-dev mesa-utils libgl1-mesa-dri libqt4-opengl-dev libatlas-base-dev gfortran libeigen3-dev 
+RUN apt-get  -y install wget unzip net-tools vim 
 
 WORKDIR /tl_client
 RUN mkdir opencv
@@ -39,9 +39,5 @@ RUN git checkout develop
 WORKDIR /tl_client/GraduationProject/epoll/build
 RUN cmake ..
 RUN make
-
-WORKDIR /tl_client
-
-RUN apt-get -y install net-tools vim
 
 ENTRYPOINT ["/bin/bash"]
