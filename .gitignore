@@ -5,9 +5,9 @@
 *.a
 *.png
 *.sw?
+*.pipe
 */build/
 /images/*
-/fifo_pipe/*
 server
 client
 darknet

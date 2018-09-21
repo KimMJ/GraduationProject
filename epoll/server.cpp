@@ -77,23 +77,23 @@ int main(int argc, char **argv){
   printf("if name pipe already exist, remove it.\n");
   system("rm ../fifo_pipe/*");
   
-  if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
+  if (-1 == (mkfifo("../fifo_pipe/server_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   }
   
-  if (-1 == (mkfifo("../fifo_pipe/darknet_send", FIFO_PERMS))) {
+  if (-1 == (mkfifo("../fifo_pipe/darknet_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   } 
   
 
-  if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
+  if (-1 == (fd_to_client=open("../fifo_pipe/server_send.pipe", O_WRONLY))) {
     perror("server_send open error: ");
     return 1;
   }
   
-  if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send", O_RDWR))) {
+  if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send.pipe", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
   }
