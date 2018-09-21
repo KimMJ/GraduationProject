@@ -4,5 +4,5 @@
 
 ### Install with docker
 
-docker pull wtfitis/tl_client
+docker pull wtfitis/tl_client  
 docker run -it --rm  --name client tl_client
