@@ -17,6 +17,7 @@ RUN unzip opencv.zip
 
 RUN wget -O opencv_contrib.zip https://github.com/opencv/opencv_contrib/archive/3.4.0.zip
 RUN unzip opencv_contrib.zip
+RUN rm opencv_contrib.zip opencv.zip
 
 WORKDIR /tl_client/opencv/opencv-3.4.0
 RUN mkdir build
