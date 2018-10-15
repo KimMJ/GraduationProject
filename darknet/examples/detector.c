@@ -1,6 +1,7 @@
 #include "darknet.h"
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 
@@ -577,9 +578,9 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     char buff[256];
     char *input = buff;
     float nms=.45;
-    int fd_to_server;
+    //int fd_to_server;
     int fd_from_server;
-    char message[] = "client to server\n";
+    //char message[] = "client to server\n";
 
     if (-1 == (fd_from_server=open("../fifo_pipe/server_send.pipe", O_RDWR))) {
         perror("open error: ");
