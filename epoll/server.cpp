@@ -12,19 +12,28 @@
 #include <mutex>
 #include <map>
 #include "data.hpp"
+#include <unordered_map>
 
 #define MAX_CLIENT 1000
 #define MAX_EVENTS 1000
 #define BUFSIZE 1024
 #define DEFAULT_EXPIRE 90
 #define MAX_EXPIRE 180
+#define CLUSTER 4
 #define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
-class client {
+class Client {
 public:
   int client_socket_fd;
   char client_ip[20];
   int num_car;
+
+  Client (int client_socket_fd, char *client_ip, int num_car) {
+    this.client_socket_fd = client_socket_fd;
+    memset(this.client_ip[0], 0, 20);
+    strcpy(this.client_ip[0], client_ip);
+    this.num_car = num_car;
+  }
 };
 
 void userpool_add(int client_fd, char * client_ip);
@@ -39,7 +48,9 @@ bool setnonblocking(int fd, bool blocking);
 void response_darknet_init();
 
 struct epoll_event g_events[MAX_EVENTS];
-struct client g_clients[MAX_CLIENT];
+//struct Client g_clients[MAX_CLIENT];
+std::unordered_map<int, Client> g_clients;
+
 int g_epoll_fd, g_server_socket;
 bool server_close = true;
 
@@ -52,7 +63,7 @@ std::queue<int> clients_request_queue;
 int fd_to_client;
 int fd_from_darknet;
 
-std::mutex mtx;    
+std::mutex mtx;
 
 int main(int argc, char **argv){
   if (argc != 2){
@@ -76,28 +87,28 @@ int main(int argc, char **argv){
 
   printf("if name pipe already exist, remove it.\n");
   system("rm ../fifo_pipe/*");
-  
+
   if (-1 == (mkfifo("../fifo_pipe/server_send", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   }
-  
+
   if (-1 == (mkfifo("../fifo_pipe/darknet_send", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
-  } 
-  
+  }
+
 
   if (-1 == (fd_to_client=open("../fifo_pipe/server_send", O_WRONLY))) {
     perror("server_send open error: ");
     return 1;
   }
-  
+
   if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
   }
-  
+
   response_darknet_init();
 
 
@@ -158,7 +169,7 @@ void *server_process(void *arg){
     int client_length = sizeof(client_address);
     int client_socket;
     int num_fd = epoll_wait(g_epoll_fd, g_events, MAX_EVENTS, 100);
-    
+
     if (num_fd == 0){
       continue; // nothing
     } else if (num_fd < 0){
@@ -173,8 +184,26 @@ void *server_process(void *arg){
         if (client_socket < 0){
           printf("accept_error\n");
         } else {
+
+          char buf[10];
+          memset(buf, 0, 10);
+
+          int len = recv(event_fd, buf, 10, 0);
+          printf("Client info >>> road num : %s\n", buf);
+
+          int client_road_info = atoi(buf);
+
+          userpool_add(client_socket, client_road_info, inet_ntoa(client_address.sin_addr));
+
           printf("new client connected\nfd : %d\nip : %s\n", client_socket, inet_ntoa(client_address.sin_addr));
-          userpool_add(client_socket, inet_ntoa(client_address.sin_addr));
+
+          if (len <= 0){ // error
+            userpool_delete(event_fd);
+            close(event_fd);
+            return;
+          }
+
+
         }
       } else {//already connected. receive handling
         client_receive(g_events[i].data.fd);
@@ -184,10 +213,12 @@ void *server_process(void *arg){
 }
 
 // send some data to clients
-// 
+// doit with cluster
 void *server_send_data(void *arg){
   char buf[BUFSIZE];
   int len;
+  int num_client = 0;
+
   while(true){
     bool noClient = true;
     int i;
@@ -195,32 +226,33 @@ void *server_send_data(void *arg){
       if (g_clients[i].client_socket_fd == -1) { // client_socket_fd 가 설정되어 있지 않을 경우 continue
         continue;
       }
-      
+
       if (noClient) { // client_socket_fd 가 설정되어 있고 client 가 없다고 설정되어 있을 경우, client 있음
         noClient = false;
+        num_client ++;
       }
-      
+
       if (g_clients[i].num_car == -1) { // client_socket_fd 가 설정되어 있지만, num_car 가 설정되어있지 않을 경우, break
         break;
       }
     }
-    
+
     if (noClient || i != MAX_CLIENT) { // client가 없거나 client 가 있지만 num_car 가 설정되어있지 않을 경우 continue
       continue;
     }
-    
+
     // all client.num_car set
-    
+    //modify from here
+    //CLUSTER
     if (client_expire < MAX_EXPIRE) {
       client_expire += 10;
     } else {
       client_expire = DEFAULT_EXPIRE;
     }
-    
-    sprintf(buf, "%d", client_expire);
 
+    sprintf(buf, "%d", client_expire);
     for (int i = 0; i < MAX_CLIENT; i ++){
-      if (g_clients[i].client_socket_fd != -1){
+      if (g_clients[i].client_socket_fd != -1){// send to all other client
         printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
         len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
         g_clients[i].num_car = -1;
@@ -231,7 +263,7 @@ void *server_send_data(void *arg){
 
 bool setnonblocking(int fd, bool blocking=true){
   if (fd < 0) return false;
-       
+
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0) return false;
   flags = blocking ? (flags&~O_NONBLOCK) : (flags|O_NONBLOCK);
@@ -298,19 +330,13 @@ void epoll_init(){
   printf("epoll set succeded\n");
 }
 
-void userpool_add(int client_fd, char * client_ip){
+void userpool_add(int client_fd, int client_road_info, char * client_ip){// add data in g_clients
   int i;
-  for (i = 0; i < MAX_CLIENT; i ++){
-    if (g_clients[i].client_socket_fd == -1) break;
-  }
-  if (i >= MAX_CLIENT) {
-    printf("client is full\n");
-   close(client_fd);
-  }
 
-  g_clients[i].client_socket_fd = client_fd;
-  memset(&g_clients[i].client_ip[0], 0, 20);
-  strcpy(&g_clients[i].client_ip[0], client_ip);
+  Client client = new Client(client_fd, client_ip, -1);
+
+  std::pair<int, Client> new_client (client_road_info, client);
+  g_clients.insert(new_client);
 
   struct epoll_event events;
 
@@ -337,7 +363,7 @@ void userpool_delete(int client_fd){
 void client_receive(int event_fd){
   char buf[BUFSIZE];
   int len;
-  
+
   memset(buf, 0, BUFSIZE);
   len = recv(event_fd, buf, 10, 0);
 
@@ -347,28 +373,28 @@ void client_receive(int event_fd){
     return;
   }
 
-  
+
   int total_size = atoi(buf);
   printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
   sprintf(fileName, "../images/%05d%s", event_fd, ".jpg");
 
-  printf("trying to %s file open.\n", fileName);    
+  printf("trying to %s file open.\n", fileName);
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
-    
+
   if (fd == -1){
     printf("file open error\n");
     exit(1);
   }
-  int size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
+  int size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
     printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
-    size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
+    size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   }
-  
+
   printf("done!\n");
   mtx.lock();
   clients_request_queue.push(event_fd);
@@ -384,8 +410,8 @@ void response_darknet_init() {
     perror("write error: ");
     exit(1);
   }
-  
-  
+
+
   if (read(fd_from_darknet, buf, BUFSIZE) < 0) {
     perror("read error: ");
     exit(1);

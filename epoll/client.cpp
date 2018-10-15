@@ -13,10 +13,11 @@
 #include <pthread.h>
 #include <ctime>
 #include "data.hpp"
+#include "json/json.h"
 
 #define BUFSIZE 1024
 #define LED 4
-#define DEFAULT_EXPIRE 10
+#define DEFAULT_EXPIRE 5
 
 void client_process(int sock);
 
@@ -30,10 +31,13 @@ bool socket_connected = false;
 int expire = DEFAULT_EXPIRE;
 int cur_timer = 0;
 enum Light cur_light = RED;
-struct sockaddr_in server_address;
 
 int main(int argc, char **argv){
+  //tmp client_road_info
+  int client_road_info = 1;
+
   int sock;
+  struct sockaddr_in server_address;
   pthread_t snd_thread, rcv_thread, process_thread;
   void *thread_result;
 
@@ -60,6 +64,14 @@ int main(int argc, char **argv){
   socket_connected = true;
   printf("connect is success!!\n");
 
+  char buf[10];
+  memset(buf, 0, BUFSIZE);
+  sprintf(buf, "%010lu", client_road_info);
+  sprintf(stdout, "%010lu", client_road_info);
+
+  send(sock, buf, strlen(buf), 0);
+
+  //recv some data (ex. how many roads, light info, expire)
 
   client_process(sock);
   close(sock);
@@ -99,91 +111,82 @@ void client_process(int sock) {
       continue;
     }
     */
-    if (socket_connected) {
-      if (!wait_recv) {
-        frame_snapshot_time = time(NULL);
-        frame_time = frame_snapshot_time - frame_start_time;
-        //1000msec == 1sec
-        frame_start_time = frame_snapshot_time;
-        // modify here to move specific time (msec)
-        mov_msec += frame_time;
-        vc.set(CAP_PROP_POS_MSEC, mov_msec * 1000);
+    if (!wait_recv) {
+      frame_snapshot_time = time(NULL);
+      frame_time = frame_snapshot_time - frame_start_time;
+      //1000msec == 1sec
+      frame_start_time = frame_snapshot_time;
+      // modify here to move specific time (msec)
+      mov_msec += frame_time;
+      vc.set(CAP_PROP_POS_MSEC, mov_msec * 1000);
 
-        Mat frame;
-        vc >> frame;
+      Mat frame;
+      vc >> frame;
 
-        if (frame.empty()) {
-          printf("video is end\n");
-          return;
-        }
+      if (frame.empty()) {
+        printf("video is end\n");
+        return;
+      }
 
-        //imshow("image", frame);
-        waitKey(100);
-        imwrite(OUTPUT_FILENAME, frame);
+      imshow("image", frame);
+      waitKey(100);
+      imwrite(OUTPUT_FILENAME, frame);
 
 
-        FILE * f = fopen(OUTPUT_FILENAME, "r");
-        fseek(f, 0, SEEK_END);
-        unsigned long file_len = (unsigned long) ftell(f);
+      FILE * f = fopen(OUTPUT_FILENAME, "r");
+      fseek(f, 0, SEEK_END);
+      unsigned long file_len = (unsigned long) ftell(f);
 
-        fd = open(OUTPUT_FILENAME, O_RDONLY);
+      fd = open(OUTPUT_FILENAME, O_RDONLY);
 
-        if (fd == -1) {
-          printf("fatal error : no file error\n");
-          return;
-        }
-
-        memset(buf, 0, BUFSIZE);
-        sprintf(buf, "%010lu", file_len);
-        printf("%s file size : %s\n", OUTPUT_FILENAME, buf);
-        send(sock, buf, strlen(buf), 0);
-
-        while ((len = read(fd, buf, BUFSIZE)) != 0) {
-          send(sock, buf, len, 0);
-        }
-
-        printf("file transfer is done\n");
-        wait_recv = true;
+      if (fd == -1) {
+        printf("fatal error : no file error\n");
+        return;
       }
 
       memset(buf, 0, BUFSIZE);
+      sprintf(buf, "%010lu", file_len);
+      printf("%s file size : %s\n", OUTPUT_FILENAME, buf);
+      send(sock, buf, strlen(buf), 0);
 
-      len = recv(sock, buf, BUFSIZE, MSG_DONTWAIT);//non_blocking
+      while ((len = read(fd, buf, BUFSIZE)) != 0) {
+        send(sock, buf, len, 0);
+      }
 
-      if (len == 0) {
-        //socket is closed.
-        printf("socket is closed\n");
-        socket_connected = false;
+      printf("file transfer is done\n");
+      wait_recv = true;
+    }
 
-        if (connect(sock, (struct sockaddr *) &server_address, sizeof(server_address)) == -1) {
-          printf("retry connect\n");
+    memset(buf, 0, BUFSIZE);
+
+    len = recv(sock, buf, BUFSIZE, MSG_DONTWAIT);//non_blocking
+
+    if (len == 0) {
+      //socket is closed.
+      printf("socket is closed\n");
+      break;
+    }
+    // if some data received
+    else if (len > 0) {
+      wait_recv = false;
+      printf("new expire : %d\n", atoi(buf));
+      expire = atoi(buf);
+    }
+    //error
+    else {
+      // case 1 : no data
+      if (time(NULL) - light_start_time > expire) {
+        if (cur_light == RED) {
+          cur_light = GREEN;
+          printf("RED to GREEN expire : %d\n", expire);
         } else {
-          printf("reconnected\n");
-          socket_connected = true;
+          cur_light = RED;
+          printf("GREEN to RED expire : %d\n", expire);
         }
-      }
-      // if some data received
-      else if (len > 0) {
-        wait_recv = false;
-        printf("new expire : %d\n", atoi(buf));
-        expire = atoi(buf);
-      }
-      //error
-      else {
-        // case 1 : no data
-        if (time(NULL) - light_start_time > expire) {
-          if (cur_light == RED) {
-            cur_light = GREEN;
-            printf("RED to GREEN expire : %d\n", expire);
-          } else {
-            cur_light = RED;
-            printf("GREEN to RED expire : %d\n", expire);
-          }
-          //cur_timer = 0;
-          expire = DEFAULT_EXPIRE;
-          //light_start_time = clock();
-          light_start_time = time(NULL);
-        }
+        //cur_timer = 0;
+        expire = DEFAULT_EXPIRE;
+        //light_start_time = clock();
+        light_start_time = time(NULL);
       }
     }
   }
