@@ -363,7 +363,7 @@ void client_receive(int event_fd){
   }
   int size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
-    //printf("receiving : %d remain : %d\n", len, total_size);
+    printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE; 
