@@ -13,6 +13,7 @@
 #include <pthread.h>
 #include <ctime>
 #include "data.hpp"
+#include "json/json.h"
 
 #define BUFSIZE 1024
 #define LED 4
@@ -32,6 +33,9 @@ int cur_timer = 0;
 enum Light cur_light = RED;
 
 int main(int argc, char **argv){
+  //tmp client_road_info
+  unsigned int client_road_info = 1;
+
   int sock;
   struct sockaddr_in server_address;
   pthread_t snd_thread, rcv_thread, process_thread;
@@ -53,12 +57,20 @@ int main(int argc, char **argv){
   server_address.sin_addr.s_addr = inet_addr(argv[1]);
   server_address.sin_port = htons(atoi(argv[2]));
 
-  if (connect(sock, (struct sockaddr *) &server_address, sizeof(server_address)) == -1){
+  while (connect(sock, (struct sockaddr *) &server_address, sizeof(server_address)) == -1){
     printf("connect() error\n");
-    exit(1);
   }
   socket_connected = true;
   printf("connect is success!!\n");
+
+  char buf[11];
+  memset(buf, 0, BUFSIZE);
+  sprintf(buf, "%010u", client_road_info);
+  printf("%s\n", buf);
+
+  send(sock, buf, strlen(buf), 0);
+
+  //recv some data (ex. how many roads, light info, expire)
 
   client_process(sock);
   close(sock);
@@ -86,12 +98,12 @@ void client_process(int sock) {
   cout << "total video frame : " << vc.get(CV_CAP_PROP_FRAME_COUNT) << endl;
 
   frame_start_time = time(NULL);
-  
+
   double fps = vc.get(CV_CAP_PROP_FPS);
   time_t frame_snapshot_time;
   double frame_time;
   bool wait_recv = false;
-  
+
   while (true) {
     /*
     if (frame_time < 10) {//10sec
@@ -106,7 +118,7 @@ void client_process(int sock) {
       // modify here to move specific time (msec)
       mov_msec += frame_time;
       vc.set(CAP_PROP_POS_MSEC, mov_msec * 1000);
-    
+
       Mat frame;
       vc >> frame;
 
@@ -114,8 +126,8 @@ void client_process(int sock) {
         printf("video is end\n");
         return;
       }
-    
-      //imshow("image", frame);
+
+      imshow("image", frame);
       waitKey(100);
       imwrite(OUTPUT_FILENAME, frame);
 
