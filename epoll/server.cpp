@@ -20,6 +20,7 @@
 #define DEFAULT_EXPIRE 90
 #define MAX_EXPIRE 180
 #define CLUSTER 4
+#define ADD_EXPIRE 10
 #define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 class Client {
@@ -96,12 +97,12 @@ int main(int argc, char **argv){
   printf("if name pipe already exist, remove it.\n");
   system("rm ../fifo_pipe/*");
 
-  
+
   if (-1 == (mkfifo("../fifo_pipe/server_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   }
-  
+
   if (-1 == (mkfifo("../fifo_pipe/darknet_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
@@ -112,7 +113,7 @@ int main(int argc, char **argv){
     perror("server_send open error: ");
     return 1;
   }
-  
+
   if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send.pipe", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
@@ -211,7 +212,6 @@ void *server_process(void *arg){
             client_receive(it->first);
           }
         }
-        // client_receive(g_events[i].data.fd);
       }
     }
   }
@@ -223,11 +223,8 @@ void *server_send_data(void *arg){
   char buf[BUFSIZE];
   int len;
   int num_client = 0;
-
+  std::chrono::system_clock::time_point wait_start = std::chrono::system_clock::now();
   while(true){
-    // bool noClient = true;
-    // int i;
-
     bool ready_for_img_processing = false;
 
     for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
@@ -238,24 +235,36 @@ void *server_send_data(void *arg){
     }
 
     if (ready_for_img_processing) {
-      continue;
+      auto wait_time = std::chrono::system_clock::now() - wait_start;
+      if (wait_time.count() > ADD_EXPIRE) {
+        sprintf(buf, "%d", client_expire);
+        for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+          if (it->second.num_car != -1) {
+            send(it->second.client_socket_fd, buf, strlen(buf), 0);
+            it->second.num_car = -1;
+          }
+        }
+      }
+      wait_start = std::chrono::system_clock::now();
     }
+    else {
+      // all client.num_car set
+      //modify from here
+      // TODO : add some codes to process traffic signal
+      if (client_expire < MAX_EXPIRE) {
+        client_expire += ADD_EXPIRE;
+      } else {
+        client_expire = DEFAULT_EXPIRE;
+      }
 
-    // all client.num_car set
-    //modify from here
-    // TODO : add some codes to process traffic signal
-    if (client_expire < MAX_EXPIRE) {
-      client_expire += 10;
-    } else {
-      client_expire = DEFAULT_EXPIRE;
-    }
+      sprintf(buf, "%d", client_expire);
 
-    sprintf(buf, "%d", client_expire);
-
-    for (auto it = g_clients.begin(); it != g_clients.end(); it ++) {
-      printf("server send data: client_socket_fd: %d, client_expire: %s\n", it->second.client_socket_fd, buf);
-      len = send(it->second.client_socket_fd, buf, strlen(buf), 0);
-      it->second.num_car = -1;
+      for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+        printf("server send data: client_socket_fd: %d, client_expire: %s\n", it->second.client_socket_fd, buf);
+        len = send(it->second.client_socket_fd, buf, strlen(buf), 0);
+        it->second.num_car = -1;
+      }
+      wait_start = std::chrono::system_clock::now();
     }
   }
 }
@@ -302,7 +311,6 @@ void server_init(int port){
     exit(1);
   }
 
-  //setnonblocking(g_server_socket, false);
   printf("server start listening\n");
   server_close = false;
 }
@@ -366,14 +374,11 @@ void client_receive(int event_seq){
     return;
   }
 
-
   int total_size = atoi(buf);
-  // printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
   sprintf(fileName, "../images/%05d%s", event_fd, ".jpg");
 
-  // printf("trying to %s file open.\n", fileName);
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
 
   if (fd == -1){
@@ -382,13 +387,11 @@ void client_receive(int event_seq){
   }
   int size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
-    // printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   }
 
-  // printf("done!\n");
   mtx.lock();
   clients_request_queue.push(event_seq);
   printf("server received data from event_seq : %d\n", event_seq);
