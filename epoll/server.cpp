@@ -127,7 +127,7 @@ void *server_request_darknet(void *arg) {
       clients_request_queue.pop();
       mtx.unlock();
       memset(message, 0, BUFSIZE);
-      sprintf(message, "../images/%05d%s", client_fd, ".jpg");
+      sprintf(message, "%05d", client_fd);
       printf("message : %s, sizeof message : %lu\n", message, strlen(message));
 
       if (write(fd_to_client, message, strlen(message)) < 0) {
@@ -377,7 +377,7 @@ void client_receive(int event_fd){
 }
 
 void response_darknet_init() {
-  char message[] = "../images/sample.demo";
+  char message[] = "sample.demo";
   char buf[BUFSIZE];
   std::chrono::system_clock::time_point start = std::chrono::system_clock::now();
   if (write(fd_to_client, message, strlen(message)) < 0) {

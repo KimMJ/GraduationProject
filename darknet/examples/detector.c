@@ -566,6 +566,7 @@ void validate_detector_recall(char *cfgfile, char *weightfile)
 
 void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filename, float thresh, float hier_thresh, char *outfile, int fullscreen)
 {
+    printf("1\n");
     list *options = read_data_cfg(datacfg);
     char *name_list = option_find_str(options, "names", "data/names.list");
     char **names = get_labels(name_list);
@@ -580,6 +581,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
     float nms=.45;
     //int fd_to_server;
     int fd_from_server;
+    char fileName[256];
     //char message[] = "client to server\n";
 
     if (-1 == (fd_from_server=open("../fifo_pipe/server_send.pipe", O_RDWR))) {
@@ -596,10 +598,14 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
             fflush(stdout);
 
             memset(input, 0, 256);
+            memset(fileName, 0, 256);
             if ((len = read(fd_from_server, input, 256)) < 0) {
                 perror("write error: ");
                 return;
             }
+            printf("%s\n", input);
+            sprintf(fileName, "../images/%s.jpg", input); 
+
             // if (write(fd_to_server, message, sizeof(message)) < 0) {
             //     perror("read error: ");
             //     return;
@@ -609,8 +615,8 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
             // if(!input) return;
             //strtok(input, "\n");
         }
-        printf("path : %s, len : %d\n", input, len);
-        image im = load_image_color(input,0,0);
+        printf("path : %s, len : %d\n", fileName, len);
+        image im = load_image_color(fileName,0,0);
         image sized = letterbox_image(im, net->w, net->h);
         //image sized = resize_image(im, net->w, net->h);
         //image sized2 = resize_max(im, net->w);
@@ -622,7 +628,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         float *X = sized.data;
         time=what_time_is_it_now();
         network_predict(net, X);
-        printf("%s: Predicted in %f seconds.\n", input, what_time_is_it_now()-time);
+        printf("%s: Predicted in %f seconds.\n", fileName, what_time_is_it_now()-time);
         int nboxes = 0;
         detection *dets = get_network_boxes(net, im.w, im.h, thresh, hier_thresh, 0, 1, &nboxes);
         //printf("%d\n", nboxes);
@@ -630,8 +636,8 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
         if (nms) do_nms_sort(dets, nboxes, l.classes, nms);
         draw_detections(im, dets, nboxes, thresh, names, alphabet, l.classes);
         free_detections(dets, nboxes);
-        if(outfile){
-            save_image(im, outfile);
+        if(input){
+            save_image(im, input);
         }
         else{
             save_image(im, "predictions");
