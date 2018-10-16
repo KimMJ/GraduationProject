@@ -29,14 +29,13 @@ public:
   int num_car;
 
   Client (int client_socket_fd, char *client_ip, int num_car) {
-    this.client_socket_fd = client_socket_fd;
-    memset(this.client_ip[0], 0, 20);
-    strcpy(this.client_ip[0], client_ip);
-    this.num_car = num_car;
+    this->client_socket_fd = client_socket_fd;
+    strcpy(this->client_ip, client_ip);
+    this->num_car = num_car;
   }
 };
 
-void userpool_add(int client_fd, char * client_ip);
+void userpool_add(int client_fd, int client_road_info, char * client_ip);
 void userpool_delete(int client_fd);
 void client_receive(int event_fd);
 void epoll_init();
@@ -75,10 +74,10 @@ int main(int argc, char **argv){
   }
 
   //init g_clients
-  for (int i = 0; i < MAX_CLIENT; i ++){
-    g_clients[i].client_socket_fd = -1;
-    g_clients[i].num_car = -1;
-  }
+  // for (int i = 0; i < MAX_CLIENT; i ++){
+  //   g_clients[i].client_socket_fd = -1;
+  //   g_clients[i].num_car = -1;
+  // }
 
   server_init(atoi(argv[1]));
   epoll_init();
@@ -151,13 +150,14 @@ void *server_request_darknet(void *arg) {
         return (void*) 4;
       }
 
-      for (int i=0; i<MAX_CLIENT; i++) {
-        if (g_clients[i].client_socket_fd == client_fd) {
-          g_clients[i].num_car = atoi(buf);
-          printf("receive from darknet: ../images/%05d.jpg result: %d\n", client_fd, g_clients[i].num_car);
-          break;
-        }
-      }
+      // for (int i=0; i<MAX_CLIENT; i++) {
+      //   if (g_clients[i].client_socket_fd == client_fd) {
+      //     g_clients[i].num_car = atoi(buf);
+      //     printf("receive from darknet: ../images/%05d.jpg result: %d\n", client_fd, g_clients[i].num_car);
+      //     break;
+      //   }
+      // }
+      // g_clients[client_fd].
     }
   }
 }
@@ -188,7 +188,7 @@ void *server_process(void *arg){
           char buf[10];
           memset(buf, 0, 10);
 
-          int len = recv(event_fd, buf, 10, 0);
+          int len = recv(client_socket, buf, 10, 0);
           printf("Client info >>> road num : %s\n", buf);
 
           int client_road_info = atoi(buf);
@@ -197,11 +197,11 @@ void *server_process(void *arg){
 
           printf("new client connected\nfd : %d\nip : %s\n", client_socket, inet_ntoa(client_address.sin_addr));
 
-          if (len <= 0){ // error
-            userpool_delete(event_fd);
-            close(event_fd);
-            return;
-          }
+          // if (len <= 0){ // error
+          //   userpool_delete(client_socket);
+          //   close(event_fd);
+          //   return;
+          // }
 
 
         }
@@ -223,18 +223,18 @@ void *server_send_data(void *arg){
     bool noClient = true;
     int i;
     for (i=0; i<MAX_CLIENT; i++) {
-      if (g_clients[i].client_socket_fd == -1) { // client_socket_fd 가 설정되어 있지 않을 경우 continue
-        continue;
-      }
+      // if (g_clients[i].client_socket_fd == -1) { // client_socket_fd 가 설정되어 있지 않을 경우 continue
+      //   continue;
+      // }
 
-      if (noClient) { // client_socket_fd 가 설정되어 있고 client 가 없다고 설정되어 있을 경우, client 있음
-        noClient = false;
-        num_client ++;
-      }
+      // if (noClient) { // client_socket_fd 가 설정되어 있고 client 가 없다고 설정되어 있을 경우, client 있음
+      //   noClient = false;
+      //   num_client ++;
+      // }
 
-      if (g_clients[i].num_car == -1) { // client_socket_fd 가 설정되어 있지만, num_car 가 설정되어있지 않을 경우, break
-        break;
-      }
+      // if (g_clients[i].num_car == -1) { // client_socket_fd 가 설정되어 있지만, num_car 가 설정되어있지 않을 경우, break
+      //   break;
+      // }
     }
 
     if (noClient || i != MAX_CLIENT) { // client가 없거나 client 가 있지만 num_car 가 설정되어있지 않을 경우 continue
@@ -251,13 +251,13 @@ void *server_send_data(void *arg){
     }
 
     sprintf(buf, "%d", client_expire);
-    for (int i = 0; i < MAX_CLIENT; i ++){
-      if (g_clients[i].client_socket_fd != -1){// send to all other client
-        printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
-        len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
-        g_clients[i].num_car = -1;
-      }
-    }
+    // for (int i = 0; i < MAX_CLIENT; i ++){
+    //   if (g_clients[i].client_socket_fd != -1){// send to all other client
+    //     printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
+    //     len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
+    //     g_clients[i].num_car = -1;
+    //   }
+    // }
   }
 }
 
@@ -333,7 +333,7 @@ void epoll_init(){
 void userpool_add(int client_fd, int client_road_info, char * client_ip){// add data in g_clients
   int i;
 
-  Client client = new Client(client_fd, client_ip, -1);
+  Client client(client_fd, client_ip, -1);
 
   std::pair<int, Client> new_client (client_road_info, client);
   g_clients.insert(new_client);
@@ -350,13 +350,13 @@ void userpool_add(int client_fd, int client_road_info, char * client_ip){// add 
 
 void userpool_delete(int client_fd){
   int i;
-  for (int i = 0; i < MAX_CLIENT; i ++){
-    if(g_clients[i].client_socket_fd == client_fd){
-      printf("client is deleted\n");
-      g_clients[i].client_socket_fd = -1;
-      break;
-    }
-  }
+  // for (int i = 0; i < MAX_CLIENT; i ++){
+  //   if(g_clients[i].client_socket_fd == client_fd){
+  //     printf("client is deleted\n");
+  //     g_clients[i].client_socket_fd = -1;
+  //     break;
+  //   }
+  // }
 }
 
 // receive from client

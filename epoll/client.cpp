@@ -34,7 +34,7 @@ enum Light cur_light = RED;
 
 int main(int argc, char **argv){
   //tmp client_road_info
-  int client_road_info = 1;
+  unsigned int client_road_info = 1;
 
   int sock;
   struct sockaddr_in server_address;
@@ -59,15 +59,14 @@ int main(int argc, char **argv){
 
   while (connect(sock, (struct sockaddr *) &server_address, sizeof(server_address)) == -1){
     printf("connect() error\n");
-    wait(10);
   }
   socket_connected = true;
   printf("connect is success!!\n");
 
-  char buf[10];
+  char buf[11];
   memset(buf, 0, BUFSIZE);
-  sprintf(buf, "%010lu", client_road_info);
-  sprintf(stdout, "%010lu", client_road_info);
+  sprintf(buf, "%010u", client_road_info);
+  printf("%s\n", buf);
 
   send(sock, buf, strlen(buf), 0);
 
