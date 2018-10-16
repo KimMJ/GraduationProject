@@ -12,6 +12,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <ctime>
+#include "data.hpp"
 
 #define BUFSIZE 1024
 #define LED 4
