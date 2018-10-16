@@ -12,8 +12,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <ctime>
-#include "data.hpp"
-#include "json/json.h"
 
 #define BUFSIZE 1024
 #define LED 4
