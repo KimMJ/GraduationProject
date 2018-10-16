@@ -27,17 +27,26 @@ public:
   int client_socket_fd;
   char client_ip[20];
   int num_car;
+  bool connected;
 
-  Client (int client_socket_fd, char *client_ip, int num_car) {
+  Client (void) {
+    this->client_socket_fd = -1;
+    memset(client_ip, 0, 20);
+    this->num_car = -1;
+    this->connected = false;
+  }
+
+  Client (int client_socket_fd, char *client_ip, int num_car, bool connected) {
     this->client_socket_fd = client_socket_fd;
     strcpy(this->client_ip, client_ip);
     this->num_car = num_car;
+    this->connected = connected;
   }
 };
 
-void userpool_add(int client_fd, int client_road_info, char * client_ip);
+void userpool_add(int client_fd, int client_seq, char * client_ip);
 void userpool_delete(int client_fd);
-void client_receive(int event_fd);
+void client_receive(int event_seq);
 void epoll_init();
 void server_init(int port);
 void *server_request_darknet(void *arg);
@@ -133,12 +142,15 @@ void *server_request_darknet(void *arg) {
   while (server_close == false) {
     if (!clients_request_queue.empty()) {
       mtx.lock();
-      int client_fd = clients_request_queue.front();
+      // int client_fd = clients_request_queue.front();
+      int client_seq = clients_request_queue.front();
       clients_request_queue.pop();
+      int client_fd = g_clients[client_seq].client_socket_fd;
+
       mtx.unlock();
       memset(message, 0, BUFSIZE);
       sprintf(message, "../images/%05d%s", client_fd, ".jpg");
-      printf("message : %s, sizeof message : %lu\n", message, strlen(message));
+      // printf("message : %s, sizeof message : %lu\n", message, strlen(message));
 
       if (write(fd_to_client, message, strlen(message)) < 0) {
         perror("write error: ");
@@ -150,14 +162,8 @@ void *server_request_darknet(void *arg) {
         return (void*) 4;
       }
 
-      // for (int i=0; i<MAX_CLIENT; i++) {
-      //   if (g_clients[i].client_socket_fd == client_fd) {
-      //     g_clients[i].num_car = atoi(buf);
-      //     printf("receive from darknet: ../images/%05d.jpg result: %d\n", client_fd, g_clients[i].num_car);
-      //     break;
-      //   }
-      // }
-      // g_clients[client_fd].
+      g_clients[client_seq].num_car = atoi(buf);
+      printf("receive from darknet: ../images/%05d.jpg result: %d\n", client_fd, g_clients[client_seq].num_car);
     }
   }
 }
@@ -177,7 +183,7 @@ void *server_process(void *arg){
       continue;
     }
 
-    printf("event!\n");
+    printf("epoll >>> event occurred\n");
     for (int i = 0; i < num_fd; i ++){
       if (g_events[i].data.fd == g_server_socket){//first connect time
         client_socket = accept(g_server_socket, (struct sockaddr *) &client_address, (socklen_t *) &client_length);
@@ -191,22 +197,20 @@ void *server_process(void *arg){
           int len = recv(client_socket, buf, 10, 0);
           printf("Client info >>> road num : %s\n", buf);
 
-          int client_road_info = atoi(buf);
+          int client_seq = atoi(buf);
 
-          userpool_add(client_socket, client_road_info, inet_ntoa(client_address.sin_addr));
+          userpool_add(client_socket, client_seq, inet_ntoa(client_address.sin_addr));
 
           printf("new client connected\nfd : %d\nip : %s\n", client_socket, inet_ntoa(client_address.sin_addr));
-
-          // if (len <= 0){ // error
-          //   userpool_delete(client_socket);
-          //   close(event_fd);
-          //   return;
-          // }
-
-
         }
       } else {//already connected. receive handling
-        client_receive(g_events[i].data.fd);
+        //search client_seq
+        for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+          if (it->second.client_socket_fd == g_events[i].data.fd) {
+            client_receive(it->first);
+          }
+        }
+        // client_receive(g_events[i].data.fd);
       }
     }
   }
@@ -220,30 +224,25 @@ void *server_send_data(void *arg){
   int num_client = 0;
 
   while(true){
-    bool noClient = true;
-    int i;
-    for (i=0; i<MAX_CLIENT; i++) {
-      // if (g_clients[i].client_socket_fd == -1) { // client_socket_fd 가 설정되어 있지 않을 경우 continue
-      //   continue;
-      // }
+    // bool noClient = true;
+    // int i;
 
-      // if (noClient) { // client_socket_fd 가 설정되어 있고 client 가 없다고 설정되어 있을 경우, client 있음
-      //   noClient = false;
-      //   num_client ++;
-      // }
+    bool ready_for_img_processing = false;
 
-      // if (g_clients[i].num_car == -1) { // client_socket_fd 가 설정되어 있지만, num_car 가 설정되어있지 않을 경우, break
-      //   break;
-      // }
+    for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+      if (it->second.num_car < 0) {
+        ready_for_img_processing = true;
+        break;
+      }
     }
 
-    if (noClient || i != MAX_CLIENT) { // client가 없거나 client 가 있지만 num_car 가 설정되어있지 않을 경우 continue
+    if (ready_for_img_processing) {
       continue;
     }
 
     // all client.num_car set
     //modify from here
-    //CLUSTER
+    // TODO : add some codes to process traffic signal
     if (client_expire < MAX_EXPIRE) {
       client_expire += 10;
     } else {
@@ -251,13 +250,12 @@ void *server_send_data(void *arg){
     }
 
     sprintf(buf, "%d", client_expire);
-    // for (int i = 0; i < MAX_CLIENT; i ++){
-    //   if (g_clients[i].client_socket_fd != -1){// send to all other client
-    //     printf("server send data: client_socket_fd: %d, client_expire: %s\n", g_clients[i].client_socket_fd, buf);
-    //     len = send(g_clients[i].client_socket_fd, buf, strlen(buf), 0);
-    //     g_clients[i].num_car = -1;
-    //   }
-    // }
+
+    for (auto it = g_clients.begin(); it != g_clients.end(); it ++) {
+      printf("server send data: client_socket_fd: %d, client_expire: %s\n", it->second.client_socket_fd, buf);
+      len = send(it->second.client_socket_fd, buf, strlen(buf), 0);
+      it->second.num_car = -1;
+    }
   }
 }
 
@@ -330,12 +328,12 @@ void epoll_init(){
   printf("epoll set succeded\n");
 }
 
-void userpool_add(int client_fd, int client_road_info, char * client_ip){// add data in g_clients
+void userpool_add(int client_fd, int client_seq, char * client_ip){// add data in g_clients
   int i;
 
-  Client client(client_fd, client_ip, -1);
+  Client client(client_fd, client_ip, -1, true);
 
-  std::pair<int, Client> new_client (client_road_info, client);
+  std::pair<int, Client> new_client (client_seq, client);
   g_clients.insert(new_client);
 
   struct epoll_event events;
@@ -348,39 +346,33 @@ void userpool_add(int client_fd, int client_road_info, char * client_ip){// add 
   }
 }
 
-void userpool_delete(int client_fd){
-  int i;
-  // for (int i = 0; i < MAX_CLIENT; i ++){
-  //   if(g_clients[i].client_socket_fd == client_fd){
-  //     printf("client is deleted\n");
-  //     g_clients[i].client_socket_fd = -1;
-  //     break;
-  //   }
-  // }
+void userpool_delete(int client_seq){
+  g_clients.erase(client_seq);
 }
 
 // receive from client
-void client_receive(int event_fd){
+void client_receive(int event_seq){
   char buf[BUFSIZE];
   int len;
+  int event_fd = g_clients[event_seq].client_socket_fd;
 
   memset(buf, 0, BUFSIZE);
   len = recv(event_fd, buf, 10, 0);
 
   if (len <= 0){
-    userpool_delete(event_fd);
+    userpool_delete(event_seq);
     close(event_fd);
     return;
   }
 
 
   int total_size = atoi(buf);
-  printf("file size : %d, len : %d\n", total_size, len);
+  // printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
   sprintf(fileName, "../images/%05d%s", event_fd, ".jpg");
 
-  printf("trying to %s file open.\n", fileName);
+  // printf("trying to %s file open.\n", fileName);
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
 
   if (fd == -1){
@@ -389,16 +381,16 @@ void client_receive(int event_fd){
   }
   int size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
-    printf("receiving : %d remain : %d\n", len, total_size);
+    // printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   }
 
-  printf("done!\n");
+  // printf("done!\n");
   mtx.lock();
-  clients_request_queue.push(event_fd);
-  printf("event_fd : %d\n", event_fd);
+  clients_request_queue.push(event_seq);
+  printf("server received data from event_seq : %d\n", event_seq);
   mtx.unlock();
 }
 
