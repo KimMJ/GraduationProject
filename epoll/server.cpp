@@ -13,6 +13,9 @@
 #include <map>
 #include "data.hpp"
 #include <unordered_map>
+#include "json/json.h"
+#include <iostream>
+#include <fstream>
 
 #define MAX_CLIENT 1000
 #define MAX_EVENTS 1000
@@ -20,11 +23,13 @@
 #define DEFAULT_EXPIRE 90
 #define MAX_EXPIRE 180
 #define CLUSTER 4
+#define ADD_EXPIRE 10
 #define FIFO_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)
 
 class Client {
 public:
   int client_socket_fd;
+  std::string cluster_nm;
   char client_ip[20];
   int num_car;
   bool connected;
@@ -34,13 +39,27 @@ public:
     memset(client_ip, 0, 20);
     this->num_car = -1;
     this->connected = false;
+    this->cluster_nm = "";
   }
 
-  Client (int client_socket_fd, char *client_ip, int num_car, bool connected) {
+  Client (int client_socket_fd, std::string cluster_nm, char *client_ip, int num_car, bool connected) {
     this->client_socket_fd = client_socket_fd;
     strcpy(this->client_ip, client_ip);
     this->num_car = num_car;
     this->connected = connected;
+    this->cluster_nm = cluster_nm;
+  }
+};
+
+class Cluster {
+public:
+  std::vector<int> roads;
+  std::chrono::system_clock::time_point time_stamp;
+  bool ready_for_img_processing;
+
+  Cluster(void) {
+    time_stamp= std::chrono::system_clock::now();
+    ready_for_img_processing = false;
   }
 };
 
@@ -56,8 +75,10 @@ bool setnonblocking(int fd, bool blocking);
 void response_darknet_init();
 
 struct epoll_event g_events[MAX_EVENTS];
-//struct Client g_clients[MAX_CLIENT];
 std::unordered_map<int, Client> g_clients;
+// std::unordered_map<std::string, std::vector<int> > g_clusters;
+// std::unordered_map<std::string, std::chrono::system_clock::time_point> g_time_stamp;
+std::unordered_map<std::string, Cluster> g_clusters;
 
 int g_epoll_fd, g_server_socket;
 bool server_close = true;
@@ -82,6 +103,24 @@ int main(int argc, char **argv){
     exit(1);
   }
 
+  // TODO : json parsing
+  printf("jsoncpp >>> parsing json file\n");
+  Json::Value root;
+  Json::Reader reader;
+  std::ifstream cluster_data("server_data.json", std::ifstream::binary);
+  bool parsing_successful = reader.parse(cluster_data, root, false);
+  if (!parsing_successful) {
+    std::cout << reader.getFormatedErrorMessages() << "\n";
+  }
+
+  for (auto cluster = root["clusters"].begin(); cluster != root["clusters"].end(); cluster++) {
+    for (auto road : (*cluster)["roads"]) {
+      g_clusters[cluster.key().asString()].roads.push_back(road.asInt());
+      std::cout << cluster.key().asString() << " : " <<  road.asInt() << std::endl;
+    }
+    g_clusters[cluster.key().asString()].time_stamp = std::chrono::system_clock::now();
+  }
+
   //init g_clients
   // for (int i = 0; i < MAX_CLIENT; i ++){
   //   g_clients[i].client_socket_fd = -1;
@@ -96,12 +135,12 @@ int main(int argc, char **argv){
   printf("if name pipe already exist, remove it.\n");
   system("rm ../fifo_pipe/*");
 
-  
+
   if (-1 == (mkfifo("../fifo_pipe/server_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   }
-  
+
   if (-1 == (mkfifo("../fifo_pipe/darknet_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
@@ -112,7 +151,7 @@ int main(int argc, char **argv){
     perror("server_send open error: ");
     return 1;
   }
-  
+
   if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send.pipe", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
@@ -142,16 +181,15 @@ void *server_request_darknet(void *arg) {
   char buf[BUFSIZE];
   while (server_close == false) {
     if (!clients_request_queue.empty()) {
+
       mtx.lock();
-      // int client_fd = clients_request_queue.front();
       int client_seq = clients_request_queue.front();
       clients_request_queue.pop();
       int client_fd = g_clients[client_seq].client_socket_fd;
-
       mtx.unlock();
+
       memset(message, 0, BUFSIZE);
       sprintf(message, "../images/%05d%s", client_fd, ".jpg");
-      // printf("message : %s, sizeof message : %lu\n", message, strlen(message));
 
       if (write(fd_to_client, message, strlen(message)) < 0) {
         perror("write error: ");
@@ -211,7 +249,6 @@ void *server_process(void *arg){
             client_receive(it->first);
           }
         }
-        // client_receive(g_events[i].data.fd);
       }
     }
   }
@@ -224,38 +261,52 @@ void *server_send_data(void *arg){
   int len;
   int num_client = 0;
 
-  while(true){
-    // bool noClient = true;
-    // int i;
+  for (auto cluster = g_clusters.begin(); cluster != g_clusters.end(); ++cluster) {
+    cluster->second.time_stamp = std::chrono::system_clock::now();
+  }
 
+  while(true){
     bool ready_for_img_processing = false;
 
     for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
       if (it->second.num_car < 0) {
-        ready_for_img_processing = true;
-        break;
+        g_clusters[it->second.cluster_nm].ready_for_img_processing = true;
       }
     }
 
-    if (ready_for_img_processing) {
-      continue;
-    }
+    for (auto cluster = g_clusters.begin(); cluster != g_clusters.end(); ++cluster) {
+      if (cluster->second.ready_for_img_processing) {
+        auto wait_time = std::chrono::system_clock::now() - cluster->second.time_stamp;
+        if (wait_time.count() > ADD_EXPIRE) {
+          sprintf(buf, "%d", client_expire);
+          for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+            if (it->second.num_car != -1) {
+              send(it->second.client_socket_fd, buf, strlen(buf), 0);
+              it->second.num_car = -1;
+            }
+          }
+        }
+        cluster->second.time_stamp = std::chrono::system_clock::now();
+      }
+      else {
+        // all client.num_car set
+        //modify from here
+        // TODO : add some codes to process traffic signal
+        if (client_expire + ADD_EXPIRE < MAX_EXPIRE) {
+          client_expire += ADD_EXPIRE;
+        } else {
+          client_expire = DEFAULT_EXPIRE;
+        }
 
-    // all client.num_car set
-    //modify from here
-    // TODO : add some codes to process traffic signal
-    if (client_expire < MAX_EXPIRE) {
-      client_expire += 10;
-    } else {
-      client_expire = DEFAULT_EXPIRE;
-    }
+        sprintf(buf, "%d", client_expire);
 
-    sprintf(buf, "%d", client_expire);
-
-    for (auto it = g_clients.begin(); it != g_clients.end(); it ++) {
-      printf("server send data: client_socket_fd: %d, client_expire: %s\n", it->second.client_socket_fd, buf);
-      len = send(it->second.client_socket_fd, buf, strlen(buf), 0);
-      it->second.num_car = -1;
+        for (auto it = g_clients.begin(); it != g_clients.end(); ++it) {
+          printf("server send data: client_socket_fd: %d, client_expire: %s\n", it->second.client_socket_fd, buf);
+          len = send(it->second.client_socket_fd, buf, strlen(buf), 0);
+          it->second.num_car = -1;
+        }
+        cluster->second.time_stamp = std::chrono::system_clock::now();
+      }
     }
   }
 }
@@ -302,7 +353,6 @@ void server_init(int port){
     exit(1);
   }
 
-  //setnonblocking(g_server_socket, false);
   printf("server start listening\n");
   server_close = false;
 }
@@ -331,8 +381,15 @@ void epoll_init(){
 
 void userpool_add(int client_fd, int client_seq, char * client_ip){// add data in g_clients
   int i;
-
-  Client client(client_fd, client_ip, -1, true);
+  std::string cluster_nm;
+  for (auto cluster = g_clusters.begin(); cluster != g_clusters.end(); ++cluster) {
+    for (auto road = cluster->second.roads.begin(); road != cluster->second.roads.end(); ++road) {
+      if ((int)*road == client_seq) {
+        cluster_nm = cluster->first;
+      }
+    }
+  }
+  Client client(client_fd, cluster_nm, client_ip, -1, true);
 
   std::pair<int, Client> new_client (client_seq, client);
   g_clients.insert(new_client);
@@ -366,14 +423,11 @@ void client_receive(int event_seq){
     return;
   }
 
-
   int total_size = atoi(buf);
-  // printf("file size : %d, len : %d\n", total_size, len);
 
   char fileName[BUFSIZE];
   sprintf(fileName, "../images/%05d%s", event_fd, ".jpg");
 
-  // printf("trying to %s file open.\n", fileName);
   int fd = open(fileName, O_WRONLY|O_CREAT|O_TRUNC, 0777);
 
   if (fd == -1){
@@ -382,13 +436,11 @@ void client_receive(int event_seq){
   }
   int size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   while (total_size > 0 && (len = recv(event_fd, buf, size, 0)) > 0) {
-    // printf("receiving : %d remain : %d\n", len, total_size);
     write(fd, buf, len);
     total_size -= len;
     size = (BUFSIZE > total_size) ? total_size : BUFSIZE;
   }
 
-  // printf("done!\n");
   mtx.lock();
   clients_request_queue.push(event_seq);
   printf("server received data from event_seq : %d\n", event_seq);
