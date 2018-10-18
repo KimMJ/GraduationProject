@@ -1,7 +1,7 @@
 {
   "clusters": {
     "cluster_1": {
-      "roads": [1]
+      "roads": [1, 2]
     }
   }
 }

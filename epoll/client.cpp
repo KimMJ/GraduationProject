@@ -127,8 +127,8 @@ void client_process(int sock) {
         return;
       }
 
-      imshow("image", frame);
-      waitKey(100);
+      //imshow("image", frame);
+      //waitKey(100);
       imwrite(OUTPUT_FILENAME, frame);
 
 
