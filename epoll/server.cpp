@@ -103,16 +103,17 @@ int main(int argc, char **argv){
     exit(1);
   }
 
-  // TODO : json parsing
+  // TODO : loading json
   printf("jsoncpp >>> parsing json file\n");
   Json::Value root;
   Json::Reader reader;
   std::ifstream cluster_data("server_data.json", std::ifstream::binary);
   bool parsing_successful = reader.parse(cluster_data, root, false);
   if (!parsing_successful) {
-    std::cout << reader.getFormatedErrorMessages() << "\n";
+    std::cout << reader.getFormattedErrorMessages() << "\n";
   }
 
+  // parsing json
   for (auto cluster = root["clusters"].begin(); cluster != root["clusters"].end(); cluster++) {
     for (auto road : (*cluster)["roads"]) {
       g_clusters[cluster.key().asString()].roads.push_back(road.asInt());
@@ -121,11 +122,7 @@ int main(int argc, char **argv){
     g_clusters[cluster.key().asString()].time_stamp = std::chrono::system_clock::now();
   }
 
-  //init g_clients
-  // for (int i = 0; i < MAX_CLIENT; i ++){
-  //   g_clients[i].client_socket_fd = -1;
-  //   g_clients[i].num_car = -1;
-  // }
+
 
   server_init(atoi(argv[1]));
   epoll_init();
@@ -275,6 +272,7 @@ void *server_send_data(void *arg){
     }
 
     for (auto cluster = g_clusters.begin(); cluster != g_clusters.end(); ++cluster) {
+      // if at least one client want to get response from server but others don't send img file, init.
       if (cluster->second.ready_for_img_processing) {
         auto wait_time = std::chrono::system_clock::now() - cluster->second.time_stamp;
         if (wait_time.count() > ADD_EXPIRE) {
@@ -285,18 +283,36 @@ void *server_send_data(void *arg){
               it->second.num_car = -1;
             }
           }
+          cluster->second.time_stamp = std::chrono::system_clock::now();
         }
-        cluster->second.time_stamp = std::chrono::system_clock::now();
       }
       else {
-        // all client.num_car set
-        //modify from here
-        // TODO : add some codes to process traffic signal
+        //DO IT WITH CLUSTER
+        int vertical = 0, horizontal = 0;
+
+        if (currentGreen == vertical) {
+          if (vertical > horizontal) {
+            expire ++;
+          } else {
+            nothing;
+          }
+        } else {
+          if (vertical > horizontal) {
+            nothing;
+          } else {
+            expire ++;
+          }
+        }
         if (client_expire + ADD_EXPIRE < MAX_EXPIRE) {
           client_expire += ADD_EXPIRE;
         } else {
           client_expire = DEFAULT_EXPIRE;
         }
+
+        // all client.num_car set
+        //modify from here
+        // TODO : add some codes to process traffic signal
+
 
         sprintf(buf, "%d", client_expire);
 
