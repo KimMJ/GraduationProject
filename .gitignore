@@ -8,6 +8,7 @@
 *.pipe
 */build/
 /images/*
+!/images/*.demo.jpg
 server
 client
 darknet

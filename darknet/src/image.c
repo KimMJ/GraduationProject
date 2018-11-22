@@ -273,6 +273,7 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
                 printf("%s: %.0f%%\n", names[j], dets[i].prob[j]*100);
             }
         }
+
         if(class >= 0){
              int width = im.h * .006;
 
@@ -333,9 +334,6 @@ void draw_detections(image im, detection *dets, int num, float thresh, char **na
         perror("read error: ");
         return;
     }
-
-
-        // 지워도 되나?
 
 }
 
@@ -726,8 +724,13 @@ void save_image_jpg(image p, const char *name)
 void save_image_png(image im, const char *name)
 {
     char buff[256];
+    char directoryName[256];
+    sprintf(directoryName, "../product/%s", name);
+    mkdir(directoryName, 0777);
+
     //sprintf(buff, "%s (%d)", name, windows);
-    sprintf(buff, "%s.png", name);
+
+    sprintf(buff, "%s/%lf.png", directoryName, what_time_is_it_now());
     unsigned char *data = calloc(im.w*im.h*im.c, sizeof(char));
     int i,k;
     for(k = 0; k < im.c; ++k){
