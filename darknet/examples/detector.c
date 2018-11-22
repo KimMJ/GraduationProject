@@ -647,7 +647,7 @@ void test_detector(char *datacfg, char *cfgfile, char *weightfile, char *filenam
                 cvSetWindowProperty("predictions", CV_WND_PROP_FULLSCREEN, CV_WINDOW_FULLSCREEN);
             }
             show_image(im, "predictions");
-            cvWaitKey(0);
+            cvWaitKey(1);
             cvDestroyAllWindows();
 #endif
         }
