@@ -54,6 +54,7 @@ void *server_process(void *arg);
 void *server_send_data(void *arg);
 bool setnonblocking(int fd, bool blocking);
 void response_darknet_init();
+bool is_traffic_jam();
 
 struct epoll_event g_events[MAX_EVENTS];
 //struct Client g_clients[MAX_CLIENT];
@@ -96,12 +97,12 @@ int main(int argc, char **argv){
   printf("if name pipe already exist, remove it.\n");
   system("rm ../fifo_pipe/*");
 
-  
+
   if (-1 == (mkfifo("../fifo_pipe/server_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
   }
-  
+
   if (-1 == (mkfifo("../fifo_pipe/darknet_send.pipe", FIFO_PERMS))) {
     perror("mkfifo error: ");
     return 1;
@@ -112,7 +113,7 @@ int main(int argc, char **argv){
     perror("server_send open error: ");
     return 1;
   }
-  
+
   if (-1 == (fd_from_darknet=open("../fifo_pipe/darknet_send.pipe", O_RDWR))) {
     perror("darknet_send open error: ");
     return 2;
@@ -241,10 +242,7 @@ void *server_send_data(void *arg){
       continue;
     }
 
-    // all client.num_car set
-    //modify from here
-    // TODO : add some codes to process traffic signal
-    if (client_expire < MAX_EXPIRE) {
+    if (is_traffic_jam() && client_expire < MAX_EXPIRE) {
       client_expire += 10;
     } else {
       client_expire = DEFAULT_EXPIRE;
@@ -412,4 +410,9 @@ void response_darknet_init() {
   std::chrono::duration<double> sec = std::chrono::system_clock::now() - start;
   response_darknet = sec.count();
   printf("%f\n", response_darknet);
+}
+
+bool is_traffic_jam() {
+  //make your own algorithm with g_clients!;
+  return true;
 }
